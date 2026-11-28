@@ -11,7 +11,7 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 export const AiChat = () => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([
-    { role: "assistant", content: "Hi! 👋 I'm **EventSparks AI**. Ask me anything about African blockchain & tech events!" },
+    { role: "assistant", content: "Hi! 👋 I'm **EventSparks AI**. Ask me about upcoming events — try *\"What's happening in Lagos?\"* or *\"Any AI hackathons soon?\"*" },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -30,7 +30,7 @@ export const AiChat = () => {
     setIsLoading(true);
 
     let assistantSoFar = "";
-    const allMessages = [...messages, userMsg];
+    const allMessages = [...messages, userMsg].slice(-12);
 
     try {
       const resp = await fetch(CHAT_URL, {
@@ -43,7 +43,14 @@ export const AiChat = () => {
       });
 
       if (!resp.ok || !resp.body) {
-        throw new Error("Failed to connect");
+        let serverMessage = "Failed to connect";
+        try {
+          const errBody = await resp.json();
+          if (errBody?.error) serverMessage = String(errBody.error);
+        } catch {
+          // keep the generic message
+        }
+        throw new Error(serverMessage);
       }
 
       const reader = resp.body.getReader();
@@ -83,8 +90,9 @@ export const AiChat = () => {
           }
         }
       }
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "Sorry, I couldn't connect right now. Please try again!" }]);
+    } catch (err) {
+      const detail = err instanceof Error && err.message !== "Failed to fetch" ? ` ${err.message}` : "";
+      setMessages((prev) => [...prev, { role: "assistant", content: `Sorry, I couldn't connect right now.${detail}` }]);
     } finally {
       setIsLoading(false);
     }
