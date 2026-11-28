@@ -6,6 +6,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -20,9 +30,11 @@ serve(async (req) => {
       });
     }
 
+    // The events table is publicly readable via RLS, so the anon key (which
+    // the Supabase edge runtime provides automatically) is enough.
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const { data: event, error } = await supabase
       .from("events")
@@ -39,24 +51,27 @@ serve(async (req) => {
 
     const siteUrl = Deno.env.get("SITE_URL") ?? "https://eventsparks.com";
     const eventUrl = `${siteUrl}/event/${event.id}`;
-    const image = event.image ?? `${siteUrl}/favicon.png`;
+    const title = escapeHtml(String(event.title ?? "EventSparks"));
+    const image = escapeHtml(event.image ?? `${siteUrl}/favicon.png`);
     const location = [event.city, event.country].filter(Boolean).join(", ") || event.location;
-    const description = event.description
-      ? event.description.slice(0, 160)
-      : `${event.category} event on ${event.date} — ${location}`;
+    const description = escapeHtml(
+      event.description
+        ? String(event.description).slice(0, 160)
+        : `${event.category} event on ${event.date} — ${location}`
+    );
 
     const html = `<!doctype html>
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>${event.title} — EventSparks</title>
+    <title>${title} — EventSparks</title>
     <meta name="description" content="${description}" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="EventSparks" />
-    <meta property="og:url" content="${eventUrl}" />
-    <meta property="og:title" content="${event.title}" />
+    <meta property="og:url" content="${escapeHtml(eventUrl)}" />
+    <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:image" content="${image}" />
     <meta property="og:image:width" content="1200" />
@@ -65,16 +80,16 @@ serve(async (req) => {
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@EventSparks" />
-    <meta name="twitter:title" content="${event.title}" />
+    <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${description}" />
     <meta name="twitter:image" content="${image}" />
 
     <!-- Redirect real users to the SPA -->
-    <meta http-equiv="refresh" content="0; url=${eventUrl}" />
-    <link rel="canonical" href="${eventUrl}" />
+    <meta http-equiv="refresh" content="0; url=${escapeHtml(eventUrl)}" />
+    <link rel="canonical" href="${escapeHtml(eventUrl)}" />
   </head>
   <body>
-    <p>Redirecting to <a href="${eventUrl}">${event.title}</a>…</p>
+    <p>Redirecting to <a href="${escapeHtml(eventUrl)}">${title}</a>…</p>
   </body>
 </html>`;
 

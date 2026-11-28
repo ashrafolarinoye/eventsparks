@@ -1,6 +1,15 @@
 -- ============================================================
 -- EventSparks — Full Database Setup
 -- Run this entire file in your Supabase SQL Editor
+--
+-- Security model:
+--   * The frontend only ever holds the public anon key.
+--   * Admin access = Supabase Auth session + a row in
+--     public.user_roles with role = 'admin'.
+--   * RLS (below) is the enforcement point for reads/writes.
+--   * There is intentionally NO privileged edge function for
+--     event CRUD — admins write straight through PostgREST
+--     and are authorized by RLS.
 -- ============================================================
 
 
@@ -86,19 +95,23 @@ CREATE POLICY "Anyone can view events"
 ON public.events FOR SELECT
 USING (true);
 
--- Open insert/update/delete (UI handles admin auth, not Supabase auth)
-CREATE POLICY "Anyone can create events"
+-- Only admins can write events (enforced by RLS; the frontend uses the
+-- public anon key and Supabase Auth, never a privileged key)
+CREATE POLICY "Admins can create events"
 ON public.events FOR INSERT
-WITH CHECK (true);
+TO authenticated
+WITH CHECK (public.has_role(auth.uid(), 'admin'::app_role));
 
-CREATE POLICY "Anyone can update events"
+CREATE POLICY "Admins can update events"
 ON public.events FOR UPDATE
-USING (true)
-WITH CHECK (true);
+TO authenticated
+USING (public.has_role(auth.uid(), 'admin'::app_role))
+WITH CHECK (public.has_role(auth.uid(), 'admin'::app_role));
 
-CREATE POLICY "Anyone can delete events"
+CREATE POLICY "Admins can delete events"
 ON public.events FOR DELETE
-USING (true);
+TO authenticated
+USING (public.has_role(auth.uid(), 'admin'::app_role));
 
 
 -- ------------------------------------------------------------
@@ -141,18 +154,34 @@ CREATE POLICY "Event images are publicly accessible"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'event-images');
 
--- Anyone can upload/update/delete images (UI handles admin auth)
-CREATE POLICY "Anyone can upload event images"
+-- Only admins can upload/update/delete images
+CREATE POLICY "Admins can upload event images"
 ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'event-images');
+TO authenticated
+WITH CHECK (
+  bucket_id = 'event-images'
+  AND public.has_role(auth.uid(), 'admin'::app_role)
+);
 
-CREATE POLICY "Anyone can update event images"
+CREATE POLICY "Admins can update event images"
 ON storage.objects FOR UPDATE
-USING (bucket_id = 'event-images');
+TO authenticated
+USING (
+  bucket_id = 'event-images'
+  AND public.has_role(auth.uid(), 'admin'::app_role)
+)
+WITH CHECK (
+  bucket_id = 'event-images'
+  AND public.has_role(auth.uid(), 'admin'::app_role)
+);
 
-CREATE POLICY "Anyone can delete event images"
+CREATE POLICY "Admins can delete event images"
 ON storage.objects FOR DELETE
-USING (bucket_id = 'event-images');
+TO authenticated
+USING (
+  bucket_id = 'event-images'
+  AND public.has_role(auth.uid(), 'admin'::app_role)
+);
 
 
 -- ------------------------------------------------------------

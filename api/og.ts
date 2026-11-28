@@ -27,8 +27,10 @@ export default async function handler(req: Request): Promise<Response> {
   let html = await shellRes.text();
 
   try {
+    // The events table is publicly readable via RLS, so the anon key is
+    // enough — no privileged key is needed (or allowed) here.
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const key = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+    const key = process.env.VITE_SUPABASE_ANON_KEY;
 
     if (eventId && supabaseUrl && key) {
       const apiRes = await fetch(

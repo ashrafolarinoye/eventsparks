@@ -150,14 +150,17 @@ const Admin = () => {
     onError: () => toast.error("Failed to delete event."),
   });
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginLoading(true);
-    const success = signIn(email, password);
-    if (!success) {
-      toast.error("Invalid credentials");
+    try {
+      const success = await signIn(email.trim(), password);
+      if (!success) {
+        toast.error("Invalid credentials, or this account does not have admin access.");
+      }
+    } finally {
+      setLoginLoading(false);
     }
-    setLoginLoading(false);
   };
 
   if (loading) {
