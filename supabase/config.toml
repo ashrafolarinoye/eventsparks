@@ -1,1 +1,12 @@
 project_id = "kdivoonaxjznqtswnarz"
+
+# og-meta serves Open Graph tags to link crawlers, which send no credentials.
+# It only reads publicly-readable event data via the anon key.
+[functions.og-meta]
+verify_jwt = false
+
+# chat requires a valid JWT — the frontend sends the public anon key,
+# which is a valid JWT. This keeps anonymous abuse down without
+# requiring anyone to be signed in.
+[functions.chat]
+verify_jwt = true

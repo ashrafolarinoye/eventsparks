@@ -1,47 +1,113 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AuthContextType {
   isAdmin: boolean;
   loading: boolean;
-  signIn: (email: string, password: string) => boolean;
-  signOut: () => void;
+  signIn: (email: string, password: string) => Promise<boolean>;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   loading: false,
-  signIn: () => false,
-  signOut: () => {},
+  signIn: async () => false,
+  signOut: async () => {},
 });
 
-const SESSION_KEY = "eventsparks_admin_session";
+// Checks the public.user_roles table (via the SECURITY DEFINER has_role RPC)
+// for an 'admin' role granted to the given user. Failing closed: any error
+// resolves to false.
+const checkIsAdmin = async (userId: string): Promise<boolean> => {
+  const { data, error } = await supabase.rpc("has_role", {
+    _user_id: userId,
+    _role: "admin",
+  });
+  if (error) {
+    console.error("Failed to resolve admin role:", error.message);
+    return false;
+  }
+  return data === true;
+};
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Restore session from localStorage on mount
+  // Restore the persisted Supabase session and subscribe to future auth
+  // changes (sign-in, sign-out, token refresh).
   useEffect(() => {
-    const stored = localStorage.getItem(SESSION_KEY);
-    if (stored === "true") setIsAdmin(true);
-    setLoading(false);
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      if (!data.session) setLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      // Keep this callback free of Supabase queries to avoid deadlocks —
+      // role resolution happens in the effect below.
+      setSession(newSession);
+      if (!newSession) {
+        setIsAdmin(false);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const signIn = (email: string, password: string): boolean => {
-    const adminEmail = import.meta.env.VITE_ADMIN_EMAIL;
-    const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
+  // Resolve the admin role whenever the session changes.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
 
-    if (email === adminEmail && password === adminPassword) {
-      setIsAdmin(true);
-      localStorage.setItem(SESSION_KEY, "true");
-      return true;
+    checkIsAdmin(session.user.id).then((admin) => {
+      if (cancelled) return;
+      setIsAdmin(admin);
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  const signIn = async (email: string, password: string): Promise<boolean> => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
+      return false;
     }
-    return false;
+
+    const admin = await checkIsAdmin(data.user.id);
+    if (!admin) {
+      // Authenticated but not an admin — do not keep the session around.
+      await supabase.auth.signOut();
+      setSession(null);
+      setIsAdmin(false);
+      return false;
+    }
+
+    setSession(data.session);
+    setIsAdmin(true);
+    setLoading(false);
+    return true;
   };
 
-  const signOut = () => {
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
     setIsAdmin(false);
-    localStorage.removeItem(SESSION_KEY);
   };
 
   return (
