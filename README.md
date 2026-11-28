@@ -43,6 +43,10 @@ Database setup: run `supabase/supabase.sql` in the Supabase SQL editor (fresh pr
 
 See `.env.example`. Public (`VITE_`) vars ship to the browser and must never be privileged. Server-only vars (`LOVABLE_API_KEY`, `SITE_URL`) are for edge functions / Vercel functions.
 
+## Chatbot
+
+`src/components/AiChat.tsx` talks to the `chat` Supabase edge function, which streams answers from an OpenAI-compatible gateway (Lovable AI by default — set `LOVABLE_API_KEY` in the edge-function secrets). To answer questions about *real* events, the function fetches upcoming listings from the `events` table (public read via the anon key, cached for 2 minutes) and injects them into the system prompt. Swap providers by setting `AI_GATEWAY_URL` / `AI_CHAT_MODEL` instead of editing code. Client-supplied `system` messages are dropped, history is capped, and `verify_jwt = true` in `config.toml` still requires a valid anon key.
+
 ## Scripts
 
 - `npm run dev` — start the dev server
